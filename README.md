@@ -112,8 +112,8 @@ Or press **F5** in VS Code using the "Agent Server (Inspector)" launch configura
 
 ```bash
 # Create a resource group and ACR (one-time)
-az group create -n prescriber-rg -l eastus
-az acr create -n prescriberacr -g prescriber-rg --sku Basic --admin-enabled true
+az group create -n acaprescriber-rg -l westus3
+az acr create -n prescriberacr -g acaprescriber-rg --sku Basic --admin-enabled true
 
 # Build in ACR (no local Docker needed)
 az acr build -r prescriberacr -t prescriber-agent:latest .
@@ -124,12 +124,12 @@ az acr build -r prescriberacr -t prescriber-agent:latest .
 ```bash
 # Create a Container Apps environment
 az containerapp env create \
-  -n prescriber-env -g prescriber-rg -l eastus
+  -n prescriber-env -g acaprescriber-rg -l westus3
 
 # Deploy
 az containerapp create \
   -n prescriber-agent \
-  -g prescriber-rg \
+  -g acaprescriber-rg \
   --environment prescriber-env \
   --image prescriberacr.azurecr.io/prescriber-agent:latest \
   --registry-server prescriberacr.azurecr.io \
@@ -149,7 +149,7 @@ az containerapp create \
 Instead of storing credentials as env vars, assign a managed identity so `DefaultAzureCredential` works automatically:
 
 ```bash
-az containerapp identity assign -n prescriber-agent -g prescriber-rg --system-assigned
+az containerapp identity assign -n prescriber-agent -g acaprescriber-rg --system-assigned
 ```
 
 Then grant the identity access to your Azure AI Foundry project and Fabric workspace.
