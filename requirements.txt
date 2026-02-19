@@ -1,0 +1,16 @@
+﻿# ── Agent Framework (pinned pre-release) ──────────────────────
+agent-framework-azure-ai==1.0.0b260107
+agent-framework-core==1.0.0b260107
+
+# ── Agent-as-Server (optional — only needed for --server mode) ─
+azure-ai-agentserver-core==1.0.0b10
+azure-ai-agentserver-agentframework==1.0.0b10
+
+# ── Fabric Data Agent client deps ─────────────────────────────
+azure-identity>=1.15.0
+openai>=1.0.0
+python-dotenv>=0.21.1
+
+# ── Dev / Debug ───────────────────────────────────────────────
+debugpy
+agent-dev-cli --pre

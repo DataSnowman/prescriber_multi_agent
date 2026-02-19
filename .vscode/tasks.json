@@ -1,0 +1,21 @@
+﻿{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "agent: start inspector",
+      "type": "shell",
+      "command": "agentdev inspect",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^.*Agent Inspector.*$",
+          "endsPattern": "^.*running.*$"
+        }
+      }
+    }
+  ]
+}

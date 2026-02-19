@@ -1,0 +1,33 @@
+﻿{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Interactive Mode",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/app.py",
+      "args": ["--interactive"],
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      }
+    },
+    {
+      "name": "Single Question",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/app.py",
+      "args": ["--question", "Who is the top Lisinopril prescriber in WA?"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Agent Server (Inspector)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/app.py",
+      "args": ["--server"],
+      "console": "integratedTerminal",
+      "preLaunchTask": "agent: start inspector"
+    }
+  ]
+}
