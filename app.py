@@ -8,8 +8,12 @@ and an orchestrator LLM to answer questions like:
 
 Supports:
   --interactive   Interactive prompt loop (default)
-  --server        HTTP server mode for Agent Inspector / production
+  --server        HTTP server mode for Agent Inspector / production / ACA
   --question "…"  Answer a single question and exit
+
+When deployed to Azure Container Apps the PORT environment variable is set
+automatically.  If PORT is set and no mode flag is given, the app defaults to
+server mode so it works as a container without extra args.
 """
 
 import argparse
@@ -43,21 +47,32 @@ def main():
     group.add_argument(
         "--server",
         action="store_true",
-        help="Run as HTTP server (for Agent Inspector / deployment)",
+        help="Run as HTTP server (for Agent Inspector / ACA deployment)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Port for server mode (default: PORT env var or 8080)",
     )
 
     args = parser.parse_args()
 
-    if args.server:
-        _run_server()
+    # When PORT env var is set and no explicit mode flag is given, default to
+    # server mode so the container works without extra CLI args on ACA.
+    auto_server = os.getenv("PORT") is not None and not args.question
+
+    if args.server or auto_server:
+        port = args.port or int(os.getenv("PORT", "8080"))
+        _run_server(port)
     elif args.question:
         asyncio.run(run_workflow(args.question))
     else:
         asyncio.run(run_interactive())
 
 
-def _run_server():
-    """Start the agent as an HTTP server for Agent Inspector."""
+def _run_server(port: int = 8080):
+    """Start the agent as an HTTP server for Agent Inspector / ACA."""
     try:
         from agent_framework import ChatMessage, WorkflowBuilder
         from agent_framework.azure import AzureAIClient
@@ -110,6 +125,10 @@ def _run_server():
                     .as_agent()
                 )
 
+                # Set PORT env var so the agent server framework binds to the
+                # correct port (required for Azure Container Apps).
+                os.environ["PORT"] = str(port)
+                print(f"🚀 Starting agent server on port {port}")
                 await from_agent_framework(agent).run_async()
 
         asyncio.run(build_and_serve())

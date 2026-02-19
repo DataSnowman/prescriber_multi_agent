@@ -11,6 +11,9 @@ azure-identity>=1.15.0
 openai>=1.0.0
 python-dotenv>=0.21.1
 
+# ── Production server (ACA) ──────────────────────────────────
+gunicorn>=21.2.0
+
 # ── Dev / Debug ───────────────────────────────────────────────
 debugpy
 agent-dev-cli --pre

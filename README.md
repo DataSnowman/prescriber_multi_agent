@@ -101,6 +101,66 @@ python fabric_data_agent_client_prompt_for.py
 
 Or press **F5** in VS Code using the "Agent Server (Inspector)" launch configuration.
 
+## Azure Container Apps Deployment
+
+### Prerequisites
+
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) logged in (`az login`)
+- Docker (or [Azure Container Registry build](https://learn.microsoft.com/azure/container-registry/container-registry-tutorial-quick-task))
+
+### 1. Build and push the container image
+
+```bash
+# Create a resource group and ACR (one-time)
+az group create -n prescriber-rg -l eastus
+az acr create -n prescriberacr -g prescriber-rg --sku Basic --admin-enabled true
+
+# Build in ACR (no local Docker needed)
+az acr build -r prescriberacr -t prescriber-agent:latest .
+```
+
+### 2. Create the Container App
+
+```bash
+# Create a Container Apps environment
+az containerapp env create \
+  -n prescriber-env -g prescriber-rg -l eastus
+
+# Deploy
+az containerapp create \
+  -n prescriber-agent \
+  -g prescriber-rg \
+  --environment prescriber-env \
+  --image prescriberacr.azurecr.io/prescriber-agent:latest \
+  --registry-server prescriberacr.azurecr.io \
+  --target-port 8080 \
+  --ingress external \
+  --env-vars \
+    TENANT_ID=<your-tenant-id> \
+    DATA_AGENT_URL=<your-data-agent-url> \
+    FOUNDRY_PROJECT_ENDPOINT=<your-foundry-project-endpoint> \
+    FOUNDRY_MODEL_DEPLOYMENT_NAME=gpt-4.1 \
+  --min-replicas 0 \
+  --max-replicas 3
+```
+
+### 3. Configure managed identity (recommended)
+
+Instead of storing credentials as env vars, assign a managed identity so `DefaultAzureCredential` works automatically:
+
+```bash
+az containerapp identity assign -n prescriber-agent -g prescriber-rg --system-assigned
+```
+
+Then grant the identity access to your Azure AI Foundry project and Fabric workspace.
+
+### How it works on ACA
+
+- Azure Container Apps sets the `PORT` environment variable automatically.
+- When `PORT` is set and no CLI flags are given, the app auto-detects server mode — no `--server` flag needed in the Dockerfile.
+- The `Dockerfile` runs `python app.py --server` explicitly for clarity.
+- Interactive mode (`python app.py`) still works locally as before — it is unaffected by the ACA changes.
+
 ## Debugging
 
 The `.vscode/launch.json` includes three debug configurations:
