@@ -115,4 +115,4 @@ Edit `contact_lookup_tool.py` and replace the `_MOCK_CONTACTS` dictionary with a
 
 ## License
 
-See [LICENSE](../fabric_data_agent_client/LICENSE) in the parent project.
+MIT

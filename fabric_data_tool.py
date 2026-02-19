@@ -6,7 +6,6 @@ so it can be used as a tool node in a multi-agent workflow.
 """
 
 import os
-import sys
 
 from agent_framework import (
     ChatMessage,
@@ -15,11 +14,6 @@ from agent_framework import (
     handler,
 )
 from typing_extensions import Never
-
-# Add the sibling project to the Python path so we can import the client
-FABRIC_CLIENT_DIR = os.path.join(os.path.dirname(__file__), "..", "fabric_data_agent_client")
-if FABRIC_CLIENT_DIR not in sys.path:
-    sys.path.insert(0, FABRIC_CLIENT_DIR)
 
 from fabric_data_agent_client import FabricDataAgentClient
 

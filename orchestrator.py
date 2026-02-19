@@ -260,7 +260,7 @@ async def run_interactive():
 
         while True:
             print()
-            sample = "Who is the top Lisinopril prescriber in WA and what is their contact info?"
+            sample = "List the Top 5 Lisinopril Prescribers in WA in 2020 and return their current contact information"
             question = input(
                 "❓ Ask a question (Enter for sample, 'quit' to exit): "
             ).strip()
