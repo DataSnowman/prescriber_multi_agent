@@ -46,11 +46,12 @@ User Question
 
 ```bash
 # 1. Create and activate a virtual environment
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate   # macOS/Linux
 # .venv\Scripts\activate    # Windows
 
 # 2. Install dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
 
 # 3. Configure environment
