@@ -92,6 +92,13 @@ python app.py --question "Who is the top Lisinopril prescriber in WA?"
 python app.py --server
 ```
 
+### Just the Fabric Data Agent
+
+```bash
+python fabric_data_agent_client_prompt_for.py
+```
+
+
 Or press **F5** in VS Code using the "Agent Server (Inspector)" launch configuration.
 
 ## Debugging
