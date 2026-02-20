@@ -99,7 +99,8 @@ def _run_server(port: int = 8080):
 
         async def build_and_serve():
             # Initialise tool singletons for the @ai_function wrappers
-            _orch._fabric_tool = FabricDataTool()
+            # Use managed identity in server/container mode (no browser available)
+            _orch._fabric_tool = FabricDataTool(use_managed_identity=True)
             _orch._contact_tool = ContactLookupTool()
 
             async with (

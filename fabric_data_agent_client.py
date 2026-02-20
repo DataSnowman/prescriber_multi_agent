@@ -22,7 +22,7 @@ import json
 import os, requests
 import warnings
 from typing import Optional
-from azure.identity import InteractiveBrowserCredential
+from azure.identity import InteractiveBrowserCredential, DefaultAzureCredential, ManagedIdentityCredential
 from openai import OpenAI
 
 # Suppress OpenAI Assistants API deprecation warnings
@@ -52,18 +52,22 @@ class FabricDataAgentClient:
     - Proper cleanup of resources
     """
     
-    def __init__(self, tenant_id: str, data_agent_url: str):
+    def __init__(self, tenant_id: str, data_agent_url: str, use_managed_identity: bool = False):
         """
         Initialize the Fabric Data Agent client.
         
         Args:
             tenant_id (str): Your Azure tenant ID
             data_agent_url (str): The published URL of your Fabric Data Agent
+            use_managed_identity (bool): If True, use DefaultAzureCredential
+                (managed identity / az login) instead of interactive browser auth.
+                Set to True when running in containers or headless environments.
         """
         self.tenant_id = tenant_id
         self.data_agent_url = data_agent_url
         self.credential = None
         self.token = None
+        self._use_managed_identity = use_managed_identity
         
         # Validate inputs
         if not tenant_id:
@@ -79,18 +83,21 @@ class FabricDataAgentClient:
     
     def _authenticate(self):
         """
-        Perform interactive browser authentication and get initial token.
+        Authenticate using managed identity / DefaultAzureCredential when
+        running headless, or interactive browser auth when running locally.
         """
         try:
-            print("\n🔐 Starting authentication...")
-            print("A browser window will open for you to sign in to your Microsoft account.")
-            
-            # Create credential for interactive authentication
-            self.credential = InteractiveBrowserCredential(
-                tenant_id=self.tenant_id,
-                # Optional: specify redirect_uri if needed
-                # redirect_uri="http://localhost:8400"
-            )
+            if self._use_managed_identity:
+                print("\n🔐 Authenticating with DefaultAzureCredential (managed identity / az login)...")
+                self.credential = DefaultAzureCredential(
+                    exclude_interactive_browser_credential=True,
+                )
+            else:
+                print("\n🔐 Starting authentication...")
+                print("A browser window will open for you to sign in to your Microsoft account.")
+                self.credential = InteractiveBrowserCredential(
+                    tenant_id=self.tenant_id,
+                )
             
             # Get initial token
             self._refresh_token()

@@ -3,6 +3,7 @@
 
 # Secrets
 .env
+test.txt
 
 # Python bytecode
 __pycache__/

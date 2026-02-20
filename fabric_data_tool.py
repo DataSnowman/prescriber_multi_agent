@@ -28,7 +28,7 @@ class FabricDataTool(Executor):
 
     client: FabricDataAgentClient
 
-    def __init__(self, id: str = "fabric-data-tool"):
+    def __init__(self, id: str = "fabric-data-tool", use_managed_identity: bool = False):
         tenant_id = os.getenv("TENANT_ID")
         data_agent_url = os.getenv("DATA_AGENT_URL")
 
@@ -40,6 +40,7 @@ class FabricDataTool(Executor):
         self.client = FabricDataAgentClient(
             tenant_id=tenant_id,
             data_agent_url=data_agent_url,
+            use_managed_identity=use_managed_identity,
         )
         super().__init__(id=id)
 

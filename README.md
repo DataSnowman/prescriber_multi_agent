@@ -115,7 +115,7 @@ Or press **F5** in VS Code using the "Agent Server (Inspector)" launch configura
 az group create -n acaprescriber-rg -l westus3
 az acr create -n prescriberacr -g acaprescriber-rg --sku Basic --admin-enabled true
 
-# Build in ACR (no local Docker needed)
+# Build in ACR (no local Docker needed) - Note you do need the dot on the end
 az acr build -r prescriberacr -t prescriber-agent:latest .
 ```
 
