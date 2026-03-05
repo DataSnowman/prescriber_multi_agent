@@ -4,6 +4,8 @@
 # Secrets
 .env
 test.txt
+.auth_record.json
+.token_cache.json
 
 # Python bytecode
 __pycache__/

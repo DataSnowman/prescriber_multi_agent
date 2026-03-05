@@ -34,7 +34,7 @@ from agent_framework import (
     handler,
 )
 from agent_framework.azure import AzureAIClient
-from azure.identity.aio import DefaultAzureCredential
+from azure.identity.aio import AzureCliCredential
 from typing_extensions import Never
 from uuid import uuid4
 
@@ -181,7 +181,7 @@ async def run_workflow(question: str):
     _contact_tool = ContactLookupTool()
 
     async with (
-        DefaultAzureCredential() as credential,
+        AzureCliCredential(process_timeout=30) as credential,
         AzureAIClient(
             project_endpoint=endpoint,
             model_deployment_name=model,
@@ -238,7 +238,7 @@ async def run_interactive():
     _contact_tool = ContactLookupTool()
 
     async with (
-        DefaultAzureCredential() as credential,
+        AzureCliCredential(process_timeout=30) as credential,
         AzureAIClient(
             project_endpoint=endpoint,
             model_deployment_name=model,

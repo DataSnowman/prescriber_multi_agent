@@ -19,12 +19,14 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY . .
 
-# Azure Container Apps injects PORT (default 8080)
-ENV PORT=8080
-EXPOSE 8080
+# Hosted agents use PORT=8088 by default; Foundry injects its own PORT.
+# For local testing / ACA fallback, default to 8088.
+ENV PORT=8088
+EXPOSE 8088
 
 # Non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r appuser && useradd -r -g appuser appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
 # When PORT is set the app auto-detects server mode

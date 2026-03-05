@@ -22,7 +22,8 @@ import json
 import os, requests
 import warnings
 from typing import Optional
-from azure.identity import InteractiveBrowserCredential
+from collections import namedtuple
+from azure.identity import AuthenticationRecord, InteractiveBrowserCredential, TokenCachePersistenceOptions
 from openai import OpenAI
 
 # Suppress OpenAI Assistants API deprecation warnings
@@ -77,39 +78,109 @@ class FabricDataAgentClient:
         
         self._authenticate()
     
+    _AUTH_RECORD_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), ".auth_record.json"
+    )
+    _TOKEN_CACHE_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), ".token_cache.json"
+    )
+
+    def _load_cached_token(self):
+        """Return a cached access token if it exists and is still valid."""
+        if not os.path.exists(self._TOKEN_CACHE_PATH):
+            return None
+        try:
+            with open(self._TOKEN_CACHE_PATH, "r") as f:
+                data = json.load(f)
+            if data.get("expires_on", 0) > time.time() + 300:
+                CachedToken = namedtuple("CachedToken", ["token", "expires_on"])
+                return CachedToken(token=data["token"], expires_on=data["expires_on"])
+        except Exception:
+            pass
+        return None
+
+    def _save_token_to_cache(self):
+        """Persist the current access token to a local file."""
+        if self.token is None:
+            return
+        try:
+            with open(self._TOKEN_CACHE_PATH, "w") as f:
+                json.dump({"token": self.token.token, "expires_on": self.token.expires_on}, f)
+        except Exception:
+            pass
+
     def _authenticate(self):
         """
-        Perform interactive browser authentication and get initial token.
+        Authenticate with Azure.  Uses three layers of caching to avoid
+        unnecessary browser popups and macOS Keychain prompts:
+
+        1. **Token file cache** — if a valid access token exists on disk, use
+           it directly.  No credential object needed, no Keychain access.
+        2. **AuthenticationRecord + persistent MSAL cache** — enables silent
+           token refresh via refresh tokens when the access token has expired.
+        3. **Interactive browser** — first-time fallback; saves the
+           AuthenticationRecord so subsequent runs are silent.
         """
         try:
             print("\n🔐 Starting authentication...")
-            print("A browser window will open for you to sign in to your Microsoft account.")
-            
-            # Create credential for interactive authentication
+
+            # --- Layer 1: file-cached access token (no Keychain touch) ---
+            cached = self._load_cached_token()
+            if cached is not None:
+                self.token = cached
+                print("🔑 Using cached token (no auth needed)...")
+                print(f"✅ Token valid until: {time.ctime(cached.expires_on)}")
+                print("✅ Authentication successful!")
+                return
+
+            # --- Layer 2/3: credential-based auth ---
+            cache_options = TokenCachePersistenceOptions(
+                name="prescriber_multi_agent",
+                allow_unencrypted_storage=True,
+            )
+
+            auth_record = None
+            if os.path.exists(self._AUTH_RECORD_PATH):
+                with open(self._AUTH_RECORD_PATH, "r") as f:
+                    auth_record = AuthenticationRecord.deserialize(f.read())
+                print("🔑 Using cached authentication record (silent auth)...")
+
             self.credential = InteractiveBrowserCredential(
                 tenant_id=self.tenant_id,
-                # Optional: specify redirect_uri if needed
-                # redirect_uri="http://localhost:8400"
+                cache_persistence_options=cache_options,
+                authentication_record=auth_record,
             )
-            
-            # Get initial token
+
+            if auth_record is None:
+                print("A browser window will open for you to sign in.")
+                record = self.credential.authenticate(
+                    scopes=["https://api.fabric.microsoft.com/.default"]
+                )
+                with open(self._AUTH_RECORD_PATH, "w") as f:
+                    f.write(record.serialize())
+
             self._refresh_token()
-            
+            self._save_token_to_cache()
+
             print("✅ Authentication successful!")
-            
+
         except Exception as e:
             print(f"❌ Authentication failed: {e}")
+            if os.path.exists(self._AUTH_RECORD_PATH):
+                os.remove(self._AUTH_RECORD_PATH)
+                print("   Cleared stale auth record — please retry.")
             raise
-    
+
     def _refresh_token(self):
         """
-        Refresh the authentication token.
+        Refresh the authentication token and update the file cache.
         """
         try:
             print("🔄 Refreshing authentication token...")
             if self.credential is None:
                 raise ValueError("No credential available")
             self.token = self.credential.get_token("https://api.fabric.microsoft.com/.default")
+            self._save_token_to_cache()
             print(f"✅ Token obtained, expires at: {time.ctime(self.token.expires_on)}")
             
         except Exception as e:

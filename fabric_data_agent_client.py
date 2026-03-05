@@ -22,7 +22,8 @@ import json
 import os, requests
 import warnings
 from typing import Optional
-from azure.identity import InteractiveBrowserCredential, DefaultAzureCredential, ManagedIdentityCredential
+from collections import namedtuple
+from azure.identity import AuthenticationRecord, DefaultAzureCredential, InteractiveBrowserCredential, TokenCachePersistenceOptions
 from openai import OpenAI
 
 # Suppress OpenAI Assistants API deprecation warnings
@@ -52,22 +53,18 @@ class FabricDataAgentClient:
     - Proper cleanup of resources
     """
     
-    def __init__(self, tenant_id: str, data_agent_url: str, use_managed_identity: bool = False):
+    def __init__(self, tenant_id: str, data_agent_url: str):
         """
         Initialize the Fabric Data Agent client.
         
         Args:
             tenant_id (str): Your Azure tenant ID
             data_agent_url (str): The published URL of your Fabric Data Agent
-            use_managed_identity (bool): If True, use DefaultAzureCredential
-                (managed identity / az login) instead of interactive browser auth.
-                Set to True when running in containers or headless environments.
         """
         self.tenant_id = tenant_id
         self.data_agent_url = data_agent_url
         self.credential = None
         self.token = None
-        self._use_managed_identity = use_managed_identity
         
         # Validate inputs
         if not tenant_id:
@@ -75,54 +72,159 @@ class FabricDataAgentClient:
         if not data_agent_url:
             raise ValueError("data_agent_url is required")
         
+        # Detect server / headless mode early so we can defer auth
+        auth_mode = os.getenv("FABRIC_AUTH_MODE", "").lower()
+        self._is_server = auth_mode == "default" or (
+            os.getenv("PORT") is not None and auth_mode != "interactive"
+        )
+
         print(f"Initializing Fabric Data Agent Client...")
         print(f"Tenant ID: {tenant_id}")
         print(f"Data Agent URL: {data_agent_url}")
-        
-        self._authenticate()
+
+        if self._is_server:
+            # In server/container mode, defer authentication to first use.
+            # The managed identity endpoint may not be ready yet at startup.
+            print("🔑 Server mode detected — deferring auth to first request.")
+        else:
+            self._authenticate()
     
+    _AUTH_RECORD_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), ".auth_record.json"
+    )
+    _TOKEN_CACHE_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), ".token_cache.json"
+    )
+
+    def _load_cached_token(self):
+        """Return a cached access token if it exists and is still valid."""
+        if not os.path.exists(self._TOKEN_CACHE_PATH):
+            return None
+        try:
+            with open(self._TOKEN_CACHE_PATH, "r") as f:
+                data = json.load(f)
+            # Require at least 5 minutes remaining
+            if data.get("expires_on", 0) > time.time() + 300:
+                CachedToken = namedtuple("CachedToken", ["token", "expires_on"])
+                return CachedToken(token=data["token"], expires_on=data["expires_on"])
+        except Exception:
+            pass
+        return None
+
+    def _save_token_to_cache(self):
+        """Persist the current access token to a local file."""
+        if self.token is None:
+            return
+        try:
+            with open(self._TOKEN_CACHE_PATH, "w") as f:
+                json.dump({"token": self.token.token, "expires_on": self.token.expires_on}, f)
+        except Exception:
+            pass
+
     def _authenticate(self):
         """
-        Authenticate using managed identity / DefaultAzureCredential when
-        running headless, or interactive browser auth when running locally.
+        Authenticate with Azure.  Uses three layers of caching to avoid
+        unnecessary browser popups and macOS Keychain prompts:
+
+        1. **Token file cache** — if a valid access token exists on disk, use
+           it directly.  No credential object needed, no Keychain access.
+        2. **AuthenticationRecord + persistent MSAL cache** — enables silent
+           token refresh via refresh tokens when the access token has expired.
+        3. **Interactive browser** — first-time fallback; saves the
+           AuthenticationRecord so subsequent runs are silent.
+
+        When running in a headless/server environment (PORT env var is set, or
+        explicitly via FABRIC_AUTH_MODE=default), DefaultAzureCredential is used
+        instead, which chains through Managed Identity (ACA) → Azure CLI → etc.
         """
         try:
-            if self._use_managed_identity:
-                print("\n🔐 Authenticating with DefaultAzureCredential (managed identity / az login)...")
-                self.credential = DefaultAzureCredential(
-                    exclude_interactive_browser_credential=True,
+            print("\n🔐 Starting authentication...")
+
+            # Detect server / headless mode
+            auth_mode = os.getenv("FABRIC_AUTH_MODE", "").lower()
+            is_server = auth_mode == "default" or (
+                os.getenv("PORT") is not None and auth_mode != "interactive"
+            )
+
+            if is_server:
+                print("🔑 Using DefaultAzureCredential (server/container mode)...")
+                self.credential = DefaultAzureCredential()
+                self._refresh_token()
+                self._save_token_to_cache()
+                print("✅ Authentication successful!")
+                return
+
+            # --- Layer 1: file-cached access token (no Keychain touch) ---
+            cached = self._load_cached_token()
+            if cached is not None:
+                self.token = cached
+                print("🔑 Using cached token (no auth needed)...")
+                print(f"✅ Token valid until: {time.ctime(cached.expires_on)}")
+                print("✅ Authentication successful!")
+                return
+
+            # --- Layer 2/3: credential-based auth ---
+            cache_options = TokenCachePersistenceOptions(
+                name="prescriber_multi_agent",
+                allow_unencrypted_storage=True,
+            )
+
+            auth_record = None
+            if os.path.exists(self._AUTH_RECORD_PATH):
+                with open(self._AUTH_RECORD_PATH, "r") as f:
+                    auth_record = AuthenticationRecord.deserialize(f.read())
+                print("🔑 Using cached authentication record (silent auth)...")
+
+            self.credential = InteractiveBrowserCredential(
+                tenant_id=self.tenant_id,
+                cache_persistence_options=cache_options,
+                authentication_record=auth_record,
+            )
+
+            if auth_record is None:
+                print("A browser window will open for you to sign in.")
+                record = self.credential.authenticate(
+                    scopes=["https://api.fabric.microsoft.com/.default"]
                 )
-            else:
-                print("\n🔐 Starting authentication...")
-                print("A browser window will open for you to sign in to your Microsoft account.")
-                self.credential = InteractiveBrowserCredential(
-                    tenant_id=self.tenant_id,
-                )
-            
-            # Get initial token
+                with open(self._AUTH_RECORD_PATH, "w") as f:
+                    f.write(record.serialize())
+
             self._refresh_token()
-            
+            self._save_token_to_cache()
+
             print("✅ Authentication successful!")
-            
+
         except Exception as e:
             print(f"❌ Authentication failed: {e}")
+            try:
+                if os.path.exists(self._AUTH_RECORD_PATH):
+                    os.remove(self._AUTH_RECORD_PATH)
+                    print("   Cleared stale auth record — please retry.")
+            except OSError:
+                pass
             raise
     
     def _refresh_token(self):
         """
-        Refresh the authentication token.
+        Refresh the authentication token and update the file cache.
         """
         try:
             print("🔄 Refreshing authentication token...")
             if self.credential is None:
                 raise ValueError("No credential available")
             self.token = self.credential.get_token("https://api.fabric.microsoft.com/.default")
+            self._save_token_to_cache()
             print(f"✅ Token obtained, expires at: {time.ctime(self.token.expires_on)}")
             
         except Exception as e:
             print(f"❌ Token refresh failed: {e}")
             raise
     
+    def _ensure_authenticated(self):
+        """Authenticate lazily if not already done (server mode)."""
+        if self.credential is None and self.token is None:
+            self._authenticate()
+
     def _get_openai_client(self) -> OpenAI:
         """
         Create an OpenAI client configured for Fabric Data Agent calls.
@@ -130,6 +232,8 @@ class FabricDataAgentClient:
         Returns:
             OpenAI: Configured OpenAI client
         """
+        self._ensure_authenticated()
+
         # Check if token needs refresh (refresh 5 minutes before expiry)
         if self.token and self.token.expires_on <= (time.time() + 300):
             self._refresh_token()
