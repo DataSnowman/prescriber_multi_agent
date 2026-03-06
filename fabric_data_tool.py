@@ -40,7 +40,6 @@ class FabricDataTool(Executor):
         self.client = FabricDataAgentClient(
             tenant_id=tenant_id,
             data_agent_url=data_agent_url,
-            use_managed_identity=use_managed_identity,
         )
         super().__init__(id=id)
 
