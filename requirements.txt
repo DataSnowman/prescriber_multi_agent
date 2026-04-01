@@ -1,16 +1,16 @@
 ﻿# ── Agent Framework (pinned pre-release) ──────────────────────
-agent-framework-azure-ai==1.0.0b260107
-agent-framework-core==1.0.0b260107
+agent-framework-azure-ai==1.0.0rc3
+agent-framework-core==1.0.0rc3
 
 # ── Agent-as-Server (optional — only needed for --server mode) ─
-azure-ai-agentserver-core==1.0.0b10
-azure-ai-agentserver-agentframework==1.0.0b10
+azure-ai-agentserver-core==1.0.0b17
+azure-ai-agentserver-agentframework==1.0.0b17
 
-# ── Azure AI Projects (must match agent-framework-azure-ai) ───
-azure-ai-projects==2.0.0b3
+# ── Azure AI Projects (pinned by agent-framework-core rc3) ────
+azure-ai-projects==2.0.0b4
 
-# ── Pin starlette to avoid breaking on_event removal in 1.0 ──
-starlette<1.0.0
+# ── Starlette (agentserver-core 1.0.0b17 requires >=1.0.0rc1) ──
+starlette>=1.0.0
 
 # ── Fabric Data Agent client deps ─────────────────────────────
 azure-identity>=1.15.0

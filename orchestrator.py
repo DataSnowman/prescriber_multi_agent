@@ -17,26 +17,18 @@ import os
 from typing import Annotated
 
 from agent_framework import (
-    AgentRunEvent,
-    AgentRunResponseUpdate,
-    AgentRunUpdateEvent,
-    ChatAgent,
-    ChatMessage,
+    Agent,
     Executor,
-    Role,
-    TextContent,
+    Message,
     WorkflowBuilder,
     WorkflowContext,
-    WorkflowOutputEvent,
-    WorkflowStatusEvent,
+    WorkflowEvent,
     WorkflowRunState,
-    ai_function,
     handler,
+    tool,
 )
 from agent_framework.azure import AzureAIClient
 from azure.identity.aio import AzureCliCredential
-from typing_extensions import Never
-from uuid import uuid4
 
 from fabric_data_tool import FabricDataTool
 from contact_lookup_tool import ContactLookupTool
@@ -74,7 +66,7 @@ Workflow:
 """
 
 
-@ai_function
+@tool
 def query_prescriber_data(
     question: Annotated[
         str,
@@ -94,7 +86,7 @@ def query_prescriber_data(
     return _fabric_tool.client.ask(question, thread_name="multi-agent")
 
 
-@ai_function
+@tool
 async def lookup_prescriber_contact(
     name: Annotated[
         str,
@@ -128,14 +120,14 @@ class OrchestratorExecutor(Executor):
     coherent answer.
     """
 
-    agent: ChatAgent
+    agent: Agent
 
-    def __init__(self, agent: ChatAgent, id: str = "orchestrator"):
+    def __init__(self, agent: Agent, id: str = "orchestrator"):
         self.agent = agent
         super().__init__(id=id)
 
     @handler
-    async def handle(self, messages: list[ChatMessage], ctx: WorkflowContext[str]) -> None:
+    async def handle(self, messages: list[Message], ctx: WorkflowContext[str]) -> None:
         """
         Process user messages with the orchestrator LLM. The LLM has tool
         definitions for the Fabric Data Agent and Contact Lookup.
@@ -158,7 +150,7 @@ class ResultFormatterExecutor(Executor):
         super().__init__(id=id)
 
     @handler
-    async def format_result(self, text: str, ctx: WorkflowContext[Never, str]) -> None:
+    async def format_result(self, text: str, ctx: WorkflowContext) -> None:
         await ctx.yield_output(text)
 
 
@@ -176,29 +168,26 @@ async def run_workflow(question: str):
         print("   Update your .env file with your Azure AI Foundry project details.")
         return
 
-    # Initialise the tool singletons so @ai_function wrappers can use them
+    # Initialise the tool singletons so @tool wrappers can use them
     _fabric_tool = FabricDataTool()
     _contact_tool = ContactLookupTool()
 
-    async with (
-        AzureCliCredential(process_timeout=30) as credential,
-        AzureAIClient(
+    async with AzureCliCredential(process_timeout=30) as credential:
+        orchestrator_agent = AzureAIClient(
             project_endpoint=endpoint,
             model_deployment_name=model,
             credential=credential,
-        ).create_agent(
+        ).as_agent(
             name="OrchestratorAgent",
             instructions=_ORCHESTRATOR_INSTRUCTIONS,
             tools=[query_prescriber_data, lookup_prescriber_contact],
-        ) as orchestrator_agent,
-    ):
+        )
         orchestrator = OrchestratorExecutor(orchestrator_agent)
         formatter = ResultFormatterExecutor()
 
         workflow = (
-            WorkflowBuilder()
+            WorkflowBuilder(start_executor=orchestrator)
             .add_edge(orchestrator, formatter)
-            .set_start_executor(orchestrator)
             .build()
         )
 
@@ -206,14 +195,14 @@ async def run_workflow(question: str):
         print(f"❓ Question: {question}")
         print(f"{'='*60}\n")
 
-        async for event in workflow.run_stream(
-            [ChatMessage(role="user", text=question)]
+        async for event in workflow.run(
+            [Message(role="user", text=question)], stream=True
         ):
-            if isinstance(event, WorkflowOutputEvent):
+            if isinstance(event, WorkflowEvent) and event.type == "output":
                 print(f"\n💬 Answer:\n{'-'*50}")
                 print(event.data)
                 print(f"{'-'*50}")
-            elif isinstance(event, WorkflowStatusEvent):
+            elif isinstance(event, WorkflowEvent) and event.type == "status":
                 if event.state == WorkflowRunState.IDLE:
                     pass  # workflow finished
 
@@ -233,22 +222,20 @@ async def run_interactive():
         print("   are not set.  Update your .env file first.")
         return
 
-    # Initialise the tool singletons once so @ai_function wrappers can call them
+    # Initialise the tool singletons once so @tool wrappers can call them
     _fabric_tool = FabricDataTool()
     _contact_tool = ContactLookupTool()
 
-    async with (
-        AzureCliCredential(process_timeout=30) as credential,
-        AzureAIClient(
+    async with AzureCliCredential(process_timeout=30) as credential:
+        orchestrator_agent = AzureAIClient(
             project_endpoint=endpoint,
             model_deployment_name=model,
             credential=credential,
-        ).create_agent(
+        ).as_agent(
             name="OrchestratorAgent",
             instructions=_ORCHESTRATOR_INSTRUCTIONS,
             tools=[query_prescriber_data, lookup_prescriber_contact],
-        ) as orchestrator_agent,
-    ):
+        )
         orchestrator = OrchestratorExecutor(orchestrator_agent)
         formatter = ResultFormatterExecutor()
 
@@ -277,16 +264,15 @@ async def run_interactive():
             print("\n🧠 Thinking…")
 
             workflow = (
-                WorkflowBuilder()
+                WorkflowBuilder(start_executor=orchestrator)
                 .add_edge(orchestrator, formatter)
-                .set_start_executor(orchestrator)
                 .build()
             )
 
-            async for event in workflow.run_stream(
-                [ChatMessage(role="user", text=question)]
+            async for event in workflow.run(
+                [Message(role="user", text=question)], stream=True
             ):
-                if isinstance(event, WorkflowOutputEvent):
+                if isinstance(event, WorkflowEvent) and event.type == "output":
                     print(f"\n💬 Answer:\n{'-'*50}")
                     print(event.data)
                     print(f"{'-'*50}")

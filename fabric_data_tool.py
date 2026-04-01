@@ -8,12 +8,11 @@ so it can be used as a tool node in a multi-agent workflow.
 import os
 
 from agent_framework import (
-    ChatMessage,
+    Message,
     Executor,
     WorkflowContext,
     handler,
 )
-from typing_extensions import Never
 
 from fabric_data_agent_client import FabricDataAgentClient
 
@@ -44,7 +43,7 @@ class FabricDataTool(Executor):
         super().__init__(id=id)
 
     @handler
-    async def query_data(self, question: str, ctx: WorkflowContext[Never, str]) -> None:
+    async def query_data(self, question: str, ctx: WorkflowContext) -> None:
         """
         Send a natural-language question to the Fabric Data Agent and yield
         the response as workflow output.

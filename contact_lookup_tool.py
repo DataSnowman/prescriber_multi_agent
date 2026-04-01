@@ -18,7 +18,6 @@ from agent_framework import (
 )
 from agent_framework.azure import AzureAIClient
 from azure.identity.aio import DefaultAzureCredential
-from typing_extensions import Never
 
 # System prompt that focuses the LLM on factual contact lookup
 _CONTACT_SYSTEM_PROMPT = """\
@@ -52,7 +51,7 @@ class ContactLookupTool(Executor):
         super().__init__(id=id)
 
     @handler
-    async def lookup_contact(self, name: str, ctx: WorkflowContext[Never, str]) -> None:
+    async def lookup_contact(self, name: str, ctx: WorkflowContext) -> None:
         """
         Look up contact details for the given prescriber name and yield
         the result.
@@ -76,21 +75,20 @@ class ContactLookupTool(Executor):
             )
 
         try:
-            async with (
-                DefaultAzureCredential() as credential,
-                AzureAIClient(
+            async with DefaultAzureCredential() as credential:
+                agent = AzureAIClient(
                     project_endpoint=endpoint,
                     model_deployment_name=model,
                     credential=credential,
-                ).create_agent(
+                ).as_agent(
                     name="ContactLookupAgent",
                     instructions=_CONTACT_SYSTEM_PROMPT,
-                ) as agent,
-            ):
-                from agent_framework import ChatMessage
+                )
+
+                from agent_framework import Message
 
                 response = await agent.run(
-                    [ChatMessage(role="user", text=(
+                    [Message(role="user", text=(
                         f"Look up the contact information for prescriber: {name}"
                     ))]
                 )

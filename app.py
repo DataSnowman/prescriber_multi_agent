@@ -74,7 +74,7 @@ def main():
 def _run_server(port: int = 8080):
     """Start the agent as an HTTP server for Agent Inspector / ACA."""
     try:
-        from agent_framework import ChatMessage, WorkflowBuilder
+        from agent_framework import Message, WorkflowBuilder
         from agent_framework.azure import AzureAIClient
         from azure.identity.aio import DefaultAzureCredential
         from azure.ai.agentserver.agentframework import from_agent_framework
@@ -98,30 +98,28 @@ def _run_server(port: int = 8080):
             sys.exit(1)
 
         async def build_and_serve():
-            # Initialise tool singletons for the @ai_function wrappers
+            # Initialise tool singletons for the @tool wrappers
             # Use managed identity in server/container mode (no browser available)
             _orch._fabric_tool = FabricDataTool(use_managed_identity=True)
             _orch._contact_tool = ContactLookupTool()
 
-            async with (
-                DefaultAzureCredential() as credential,
-                AzureAIClient(
+            async with DefaultAzureCredential() as credential:
+                orchestrator_agent = AzureAIClient(
                     project_endpoint=endpoint,
                     model_deployment_name=model,
                     credential=credential,
-                ).create_agent(
+                ).as_agent(
                     name="OrchestratorAgent",
                     instructions=_ORCHESTRATOR_INSTRUCTIONS,
                     tools=[query_prescriber_data, lookup_prescriber_contact],
-                ) as orchestrator_agent,
-            ):
+                )
+
                 orchestrator = OrchestratorExecutor(orchestrator_agent)
                 formatter = ResultFormatterExecutor()
 
-                agent = (
-                    WorkflowBuilder()
+                workflow_agent = (
+                    WorkflowBuilder(start_executor=orchestrator)
                     .add_edge(orchestrator, formatter)
-                    .set_start_executor(orchestrator)
                     .build()
                     .as_agent()
                 )
@@ -130,13 +128,13 @@ def _run_server(port: int = 8080):
                 # correct port (required for Azure Container Apps).
                 os.environ["PORT"] = str(port)
                 print(f"🚀 Starting agent server on port {port}")
-                await from_agent_framework(agent).run_async()
+                await from_agent_framework(workflow_agent).run_async()
 
         asyncio.run(build_and_serve())
 
     except ImportError as e:
         print(f"❌ Missing server dependencies: {e}")
-        print("   pip install azure-ai-agentserver-core==1.0.0b10 azure-ai-agentserver-agentframework==1.0.0b10")
+        print("   pip install azure-ai-agentserver-core==1.0.0b17 azure-ai-agentserver-agentframework==1.0.0b17")
         sys.exit(1)
 
 
