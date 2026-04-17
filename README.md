@@ -9,7 +9,7 @@ User Question
      │
      ▼
 ┌─────────────┐
-│ Orchestrator │  (Azure AI Foundry — gpt-4o)
+│ Orchestrator │  (Azure AI Foundry — gpt-4.1)
 │    LLM       │
 └──┬───────┬──┘
    │       │
@@ -17,7 +17,7 @@ User Question
 ┌──────┐ ┌────────────┐
 │Fabric│ │  Contact   │
 │ Data │ │  Lookup    │
-│Agent │ │  (mock)    │
+│Agent │ │  (LLM)     │
 └──────┘ └────────────┘
    │           │
    └─────┬─────┘
@@ -32,14 +32,14 @@ User Question
 | `app.py` | Main entrypoint — interactive, single-question, or server mode |
 | `orchestrator.py` | Workflow that routes questions through Fabric + Contact agents |
 | `fabric_data_tool.py` | Wraps the existing `FabricDataAgentClient` as an Agent Framework Executor |
-| `contact_lookup_tool.py` | Mock contact lookup (replace with your real data source) |
+| `contact_lookup_tool.py` | Prescriber contact lookup via Azure AI Foundry LLM |
 
 ## Prerequisites
 
 - Python 3.10+
 - An Azure account with:
   - A **Microsoft Fabric** workspace containing a published Data Agent
-  - An **Azure AI Foundry** project with a deployed model (e.g. `gpt-4o`)
+  - An **Azure AI Foundry** project with a deployed model (e.g. `gpt-4.1`)
 - Azure CLI logged in (`az login`)
 
 ## Setup
@@ -52,10 +52,10 @@ source .venv/bin/activate   # macOS/Linux
 
 # 2. Install dependencies
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install --pre -r requirements.txt
 
 # 3. Configure environment
-cp .env.example .env        # or edit .env directly
+cp .env.sample .env         # or edit .env directly
 # Fill in FOUNDRY_PROJECT_ENDPOINT and FOUNDRY_MODEL_DEPLOYMENT_NAME
 ```
 
@@ -66,7 +66,7 @@ cp .env.example .env        # or edit .env directly
 | `TENANT_ID` | Azure AD tenant ID for Fabric auth |
 | `DATA_AGENT_URL` | Full Fabric Data Agent OpenAI-compatible endpoint |
 | `FOUNDRY_PROJECT_ENDPOINT` | Azure AI Foundry project endpoint URL |
-| `FOUNDRY_MODEL_DEPLOYMENT_NAME` | Deployed model name (e.g. `gpt-4o`) |
+| `FOUNDRY_MODEL_DEPLOYMENT_NAME` | Deployed model name (e.g. `gpt-4.1`) |
 
 ## Usage
 
@@ -78,7 +78,7 @@ python app.py
 python app.py --interactive
 ```
 
-Type questions at the prompt. Type `new` to start a fresh thread, `quit` to exit.
+Type questions at the prompt. Press Enter for a sample question, `quit` to exit.
 
 ### Single Question
 
@@ -133,7 +133,7 @@ az containerapp create \
   --environment prescriber-env \
   --image prescriberacr.azurecr.io/prescriber-agent:latest \
   --registry-server prescriberacr.azurecr.io \
-  --target-port 8080 \
+  --target-port 8088 \
   --ingress external \
   --env-vars \
     TENANT_ID=<your-tenant-id> \
@@ -171,9 +171,9 @@ The `.vscode/launch.json` includes three debug configurations:
 
 ## Customisation
 
-### Replace the Contact Lookup
+### Customise the Contact Lookup
 
-Edit `contact_lookup_tool.py` and replace the `_MOCK_CONTACTS` dictionary with a real data source (database query, API call, etc.).
+Edit `contact_lookup_tool.py` to adjust the LLM system prompt or swap in a different data source (database, NPI Registry API, etc.).
 
 ### Add More Tools
 
